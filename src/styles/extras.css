@@ -1,0 +1,24 @@
+/* Additions for the React port: small 3D interactions. */
+.platform-token,.coin3d,.dcube{touch-action:none;user-select:none}
+
+.dablo-mascot svg{transform:perspective(520px) rotateY(var(--ry,0deg)) rotateX(var(--rx,0deg));transition:transform .25s ease-out}
+.dablo-mascot{cursor:pointer}
+.dablo-mascot.hop svg{animation:mascot-hop .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes mascot-hop{0%{translate:0 0}35%{translate:0 -22px;rotate:-6deg}70%{translate:0 0;rotate:4deg}100%{translate:0 0;rotate:0deg}}
+
+.dcube-scene{width:var(--s);height:var(--s);perspective:380px;flex:none}
+.dcube{position:relative;width:100%;height:100%;transform-style:preserve-3d;transform:var(--rot);cursor:grab}
+.dcube.is-dragging{cursor:grabbing}
+.dcube-face{position:absolute;inset:0;display:grid;place-items:center;font-size:calc(var(--s) * .34);color:#546d42;
+  background:linear-gradient(145deg,#fff,#e7eddd);border:1px solid #ffffffc0;border-radius:calc(var(--s) * .14);
+  box-shadow:inset 0 0 0 1px #546d4222,0 4px 14px #1b211514;backface-visibility:hidden}
+
+.coin3d{position:relative;transform:perspective(420px) var(--rot);transform-style:preserve-3d;cursor:grab}
+.coin-face{position:absolute;inset:0;display:grid;place-items:center;backface-visibility:hidden}
+.coin-face.back{transform:rotateY(180deg)}
+
+.metric-card:after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;
+  background:radial-gradient(180px circle at var(--mx,50%) var(--my,50%),#ffffff38,transparent 62%)}
+.metric-card:hover:after{opacity:1}
+
+@media (prefers-reduced-motion:reduce){.dablo-mascot.hop svg{animation:none}.dablo-mascot svg{transition:none}}
