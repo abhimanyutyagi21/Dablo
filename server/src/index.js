@@ -12,6 +12,9 @@ import redirectRoutes from './routes/redirect.js'
 import integrationRoutes from './routes/integrations.js'
 import insightRoutes from './routes/insights.js'
 import { startScheduler } from './integrations/scheduler.js'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
 
 const app = express()
 app.disable('x-powered-by')
@@ -32,6 +35,8 @@ app.use('/api/insights', requireAuth, insightRoutes)
 app.use('/api', requireAuth, workspaceRoutes)
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }))
+app.use(express.static(dist))
+app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')))
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' })
