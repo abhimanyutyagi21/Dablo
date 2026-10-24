@@ -19,7 +19,14 @@ const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../d
 const app = express()
 app.disable('x-powered-by')
 if (config.trustProxy) app.set('trust proxy', config.trustProxy)
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'img-src': ["'self'", 'data:', 'https://images.unsplash.com'],
+    },
+  },
+}))
 app.use(cors({ origin: config.clientOrigin, credentials: true }))
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
