@@ -22,3 +22,29 @@
 .metric-card:hover:after{opacity:1}
 
 @media (prefers-reduced-motion:reduce){.dablo-mascot.hop svg{animation:none}.dablo-mascot svg{transition:none}}
+
+/* ── CSV import dialog ── */
+.modal.wide-modal{width:min(860px,calc(100% - 28px))}
+.import-steps{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px;padding:0;list-style:none;font-size:11px;color:var(--muted)}
+.import-steps li{padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+.import-steps li.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.import-drop{position:relative;display:grid;justify-items:center;gap:8px;text-align:center;padding:34px 20px;border:1.5px dashed #b9bcae;border-radius:16px;background:var(--surface);cursor:pointer;transition:border-color .2s,background .2s}
+.import-drop:hover,.import-drop.over{border-color:var(--green);background:var(--green2)}
+.import-drop:focus-within{outline:2px solid var(--green);outline-offset:2px}
+.import-drop input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.import-drop-icon{width:46px;height:46px;border-radius:50%;background:var(--lime);display:grid;place-items:center;font-size:20px;font-weight:700}
+.import-drop b{font:700 15px var(--display);letter-spacing:-.03em}
+.import-drop small{color:var(--muted);font-size:11px}
+.import-hint{color:var(--muted);font-size:11px;margin:12px 0 0}
+.import-summary{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.import-chip{padding:5px 11px;border-radius:999px;background:var(--green2);font-size:11px;font-weight:600}
+.import-chip.warn{background:#f6e1db;color:var(--red)}
+.import-map summary{cursor:pointer;font-size:12px;font-weight:600;padding:10px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.import-map[open] summary{margin-bottom:14px}
+.import-section{margin:18px 0 8px;font:700 12px var(--display)}
+.import-preview{border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.import-problems{margin:10px 0 0;padding-left:18px;color:var(--red);font-size:11px}
+.import-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.import-stat{padding:16px 10px;border:1px solid var(--line);border-radius:14px;background:var(--surface);text-align:center}
+.import-stat b{display:block;font:700 28px var(--display);letter-spacing:-.04em}
+.import-stat span{font-size:11px;color:var(--muted)}
