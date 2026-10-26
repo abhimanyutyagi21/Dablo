@@ -23,36 +23,36 @@ async function tokenRequest(p, params) {
 
 export const exchangeCode = (p, code) => tokenRequest(p, { grant_type: 'authorization_code', code, redirect_uri: redirectUri(p.id) })
 
-export function saveConnection(userId, p, account, tokens) {
-  const old = db.prepare('SELECT refresh_token FROM integrations WHERE user_id = ? AND provider = ?').get(userId, p.id)
+export async function saveConnection(userId, p, account, tokens) {
+  const old = await db.get('SELECT refresh_token FROM integrations WHERE user_id = ? AND provider = ?', userId, p.id)
   const refresh = tokens.refresh_token ? encrypt(tokens.refresh_token) : old?.refresh_token || null
-  db.prepare(`INSERT INTO integrations (id, user_id, provider, account_id, account_name, access_token, refresh_token, expires_at, scopes, status, connected_at)
+  await db.run(`INSERT INTO integrations (id, user_id, provider, account_id, account_name, access_token, refresh_token, expires_at, scopes, status, connected_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'connected', ?)
     ON CONFLICT(user_id, provider) DO UPDATE SET account_id = excluded.account_id, account_name = excluded.account_name,
       access_token = excluded.access_token, refresh_token = excluded.refresh_token, expires_at = excluded.expires_at,
-      scopes = excluded.scopes, status = 'connected', connected_at = excluded.connected_at`)
-    .run(randomUUID(), userId, p.id, account.id, account.name, encrypt(tokens.access_token), refresh,
-      Date.now() + (Number(tokens.expires_in) || 3600) * 1000, Array.isArray(tokens.scope) ? tokens.scope.join(' ') : tokens.scope || p.scopes, new Date().toISOString())
-  return db.prepare('SELECT * FROM integrations WHERE user_id = ? AND provider = ?').get(userId, p.id)
+      scopes = excluded.scopes, status = 'connected', connected_at = excluded.connected_at`,
+    randomUUID(), userId, p.id, account.id, account.name, encrypt(tokens.access_token), refresh,
+    Date.now() + (Number(tokens.expires_in) || 3600) * 1000, Array.isArray(tokens.scope) ? tokens.scope.join(' ') : tokens.scope || p.scopes, new Date().toISOString())
+  return db.get('SELECT * FROM integrations WHERE user_id = ? AND provider = ?', userId, p.id)
 }
 
-const needsReconnect = (integ) => {
-  db.prepare("UPDATE integrations SET status = 'needs_reconnect' WHERE id = ?").run(integ.id)
+const needsReconnect = async (integ) => {
+  await db.run("UPDATE integrations SET status = 'needs_reconnect' WHERE id = ?", integ.id)
   return new Error('The connection expired or was revoked. Please reconnect.')
 }
 
 // Returns a valid access token, refreshing (and re-encrypting) it when it is about to expire.
 export async function getAccessToken(integ) {
-  if (integ.status === 'needs_reconnect') throw needsReconnect(integ)
+  if (integ.status === 'needs_reconnect') throw await needsReconnect(integ)
   if (integ.expires_at - Date.now() > 60_000) return decrypt(integ.access_token)
-  if (!integ.refresh_token) throw needsReconnect(integ)
+  if (!integ.refresh_token) throw await needsReconnect(integ)
   try {
     const t = await tokenRequest(providers[integ.provider], { grant_type: 'refresh_token', refresh_token: decrypt(integ.refresh_token) })
-    db.prepare('UPDATE integrations SET access_token = ?, refresh_token = COALESCE(?, refresh_token), expires_at = ? WHERE id = ?')
-      .run(encrypt(t.access_token), t.refresh_token ? encrypt(t.refresh_token) : null, Date.now() + (Number(t.expires_in) || 3600) * 1000, integ.id)
+    await db.run('UPDATE integrations SET access_token = ?, refresh_token = COALESCE(?, refresh_token), expires_at = ? WHERE id = ?',
+      encrypt(t.access_token), t.refresh_token ? encrypt(t.refresh_token) : null, Date.now() + (Number(t.expires_in) || 3600) * 1000, integ.id)
     return t.access_token
   } catch (e) {
-    if (e.status === 400 || e.status === 401) throw needsReconnect(integ)
+    if (e.status === 400 || e.status === 401) throw await needsReconnect(integ)
     throw e
   }
 }
@@ -65,11 +65,11 @@ export async function runSync(integ) {
   try {
     const token = await getAccessToken(integ)
     const note = await p.sync({ integration: integ, token, userId: integ.user_id })
-    db.prepare("UPDATE integrations SET last_sync_at = ?, last_sync_note = ?, status = 'connected' WHERE id = ?").run(new Date().toISOString(), note, integ.id)
-    logActivity(integ.user_id, `Synced ${p.label}`, note)
+    await db.run("UPDATE integrations SET last_sync_at = ?, last_sync_note = ?, status = 'connected' WHERE id = ?", new Date().toISOString(), note, integ.id)
+    await logActivity(integ.user_id, `Synced ${p.label}`, note)
     return note
   } catch (e) {
-    db.prepare('UPDATE integrations SET last_sync_note = ? WHERE id = ?').run(`Sync failed: ${e.message}`, integ.id)
+    await db.run('UPDATE integrations SET last_sync_note = ? WHERE id = ?', `Sync failed: ${e.message}`, integ.id)
     throw e
   } finally { running.delete(integ.id) }
 }

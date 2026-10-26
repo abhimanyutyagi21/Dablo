@@ -27,7 +27,9 @@ export const config = {
   // Where the browser reaches the app. OAuth redirect URIs are built from this, e.g.
   // http://localhost:5173/api/integrations/youtube/callback
   publicUrl: (env.PUBLIC_URL || 'http://localhost:5173').replace(/\/$/, ''),
-  dbFile: env.DATABASE_FILE || 'data/dablo.db',
+  // Postgres connection string, e.g. from Neon or Supabase (required).
+  databaseUrl: env.DATABASE_URL || '',
+  dbSsl: env.DATABASE_SSL !== 'false',
   google: { id: env.GOOGLE_CLIENT_ID || '', secret: env.GOOGLE_CLIENT_SECRET || '' },
   twitch: { id: env.TWITCH_CLIENT_ID || '', secret: env.TWITCH_CLIENT_SECRET || '' },
   anthropic: {

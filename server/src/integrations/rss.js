@@ -26,17 +26,17 @@ export async function syncFeed(feed) {
   if (!channel) throw new Error('That URL did not return a valid RSS or Atom feed.')
   const items = [].concat(channel.item || channel.entry || []).slice(0, 100)
   let created = 0
-  db.transaction(() => {
+  await db.tx(async (t) => {
     for (const it of items) {
       const title = text(it.title).trim().slice(0, 200) || 'Untitled'
       const url = httpUrl(linkOf(it).trim())
       const when = new Date(text(it.pubDate) || text(it.published) || text(it.updated))
       const key = createHash('sha1').update(text(it.guid) || text(it.id) || url || title).digest('hex').slice(0, 16)
-      const r = upsertSynced(feed.user_id, `rss:${feed.id}:${key}`, 'content', {
-        title, url, platform: feed.platform, format: FORMAT[feed.platform] || 'Post', ...(isNaN(when) ? {} : { published: when.toISOString().slice(0, 10) }) })
+      const r = await upsertSynced(feed.user_id, `rss:${feed.id}:${key}`, 'content', {
+        title, url, platform: feed.platform, format: FORMAT[feed.platform] || 'Post', ...(isNaN(when) ? {} : { published: when.toISOString().slice(0, 10) }) }, t)
       if (r === 'created') created++
     }
-  })()
+  })
   return { title: text(channel.title).trim().slice(0, 200), note: `${items.length} items (${created} new).` }
 }
 
@@ -44,10 +44,10 @@ export async function syncFeed(feed) {
 export async function refreshFeed(feed) {
   try {
     const { title, note } = await syncFeed(feed)
-    db.prepare('UPDATE feeds SET title = ?, last_sync_at = ?, last_sync_note = ? WHERE id = ?').run(title || feed.title, new Date().toISOString(), note, feed.id)
+    await db.run('UPDATE feeds SET title = ?, last_sync_at = ?, last_sync_note = ? WHERE id = ?', title || feed.title, new Date().toISOString(), note, feed.id)
     return note
   } catch (e) {
-    db.prepare('UPDATE feeds SET last_sync_note = ? WHERE id = ?').run(`Sync failed: ${e.message}`, feed.id)
+    await db.run('UPDATE feeds SET last_sync_note = ? WHERE id = ?', `Sync failed: ${e.message}`, feed.id)
     throw e
   }
 }

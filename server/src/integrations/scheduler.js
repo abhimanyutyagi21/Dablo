@@ -5,10 +5,10 @@ import { runSync } from './oauth.js'
 
 // Re-sync every connected platform and feed every SYNC_INTERVAL_HOURS (0 disables).
 export async function syncAll() {
-  for (const integ of db.prepare("SELECT * FROM integrations WHERE status = 'connected'").all()) {
+  for (const integ of await db.all("SELECT * FROM integrations WHERE status = 'connected'")) {
     try { await runSync(integ) } catch (e) { console.error(`[sync] ${integ.provider} failed: ${e.message}`) }
   }
-  for (const feed of db.prepare('SELECT * FROM feeds').all()) {
+  for (const feed of await db.all('SELECT * FROM feeds')) {
     try { await refreshFeed(feed) } catch (e) { console.error(`[sync] feed failed: ${e.message}`) }
   }
 }

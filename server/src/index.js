@@ -3,8 +3,10 @@ import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import rateLimit from 'express-rate-limit'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { config } from './config.js'
-import './db.js'
+import { db } from './db.js'
 import { requireAuth } from './lib/session.js'
 import authRoutes from './routes/auth.js'
 import workspaceRoutes from './routes/workspace.js'
@@ -12,13 +14,14 @@ import redirectRoutes from './routes/redirect.js'
 import integrationRoutes from './routes/integrations.js'
 import insightRoutes from './routes/insights.js'
 import { startScheduler } from './integrations/scheduler.js'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+
+// The built React app (npm run build) lives in ../../dist; in production this server serves it too.
 const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist')
 
 const app = express()
 app.disable('x-powered-by')
 if (config.trustProxy) app.set('trust proxy', config.trustProxy)
+// helmet's default rules only allow images from this site; the landing page also uses Unsplash photos.
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -34,7 +37,9 @@ app.use(cookieParser())
 // Public short links: /r/:slug -> log click -> redirect
 app.use('/r', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false }), redirectRoutes)
 
-app.get('/api/health', (req, res) => res.json({ ok: true }))
+app.get('/api/health', async (req, res) => {
+  try { await db.get('SELECT 1 AS ok'); res.json({ ok: true }) } catch { res.status(503).json({ ok: false }) }
+})
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again in a few minutes.' } }), authRoutes)
 app.use('/api/integrations', requireAuth, integrationRoutes)

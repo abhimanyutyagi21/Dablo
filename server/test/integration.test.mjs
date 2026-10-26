@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import Database from 'better-sqlite3'
+import pg from 'pg'
 import { isPrivateAddress, safeGet } from '../src/integrations/safeFetch.js'
 
 const API_PORT = 4200
@@ -16,7 +16,7 @@ const mockState = {
   google: { denyRevenue: false, revokeRefresh: false, refreshCalls: 0, revoked: 0, bearers: [], currencies: [], v1Views: 1500 },
   anthropic: { status: 200, reply: null, requests: [] },
 }
-let mock, mockUrl, api, tmp, db
+let mock, mockUrl, api, tmp, db, testDb
 let apiLog = ''
 
 const RSS = `<?xml version="1.0"?><rss version="2.0"><channel><title>My Blog</title>
@@ -101,10 +101,10 @@ before(async () => {
   mock = http.createServer((req, rs) => mockHandler(req, rs).catch((e) => send(rs, 500, String(e))))
   await new Promise((r) => mock.listen(0, '127.0.0.1', r))
   mockUrl = `http://127.0.0.1:${mock.address().port}`
-  tmp = mkdtempSync(join(tmpdir(), 'dablo-test-'))
-  const file = join(tmp, 'test.db')
+  testDb = process.env.TEST_DATABASE_URL
+  if (!testDb || !/test/i.test(testDb)) throw new Error('Set TEST_DATABASE_URL to an EMPTY Postgres database whose name contains "test". The tests wipe it.')
   api = spawn('node', ['src/index.js'], { cwd: new URL('..', import.meta.url).pathname, env: {
-    ...process.env, NODE_ENV: 'test', PORT: String(API_PORT), DATABASE_FILE: file, SYNC_INTERVAL_HOURS: '0',
+    ...process.env, NODE_ENV: 'test', PORT: String(API_PORT), DATABASE_URL: testDb, SYNC_INTERVAL_HOURS: '0',
     JWT_SECRET: 'j'.repeat(40), TOKEN_ENCRYPTION_KEY: 't'.repeat(40), PUBLIC_URL: 'http://localhost:5173',
     GOOGLE_CLIENT_ID: 'gid', GOOGLE_CLIENT_SECRET: 'gsecret', GOOGLE_AUTH_URL: `${mockUrl}/google/auth`, GOOGLE_TOKEN_URL: `${mockUrl}/google/token`,
     GOOGLE_REVOKE_URL: `${mockUrl}/google/revoke`, YOUTUBE_API_URL: `${mockUrl}/google/youtube/v3`, YT_ANALYTICS_URL: `${mockUrl}/google/analytics/v2`,
@@ -117,10 +117,13 @@ before(async () => {
     await new Promise((r) => setTimeout(r, 200))
     if (i === 49) throw new Error('API did not start:\n' + apiLog)
   }
-  db = new Database(file)
+  const u = new URL(testDb); u.searchParams.delete('sslmode'); u.searchParams.delete('channel_binding')
+  db = new pg.Client({ connectionString: u.toString(), ssl: /localhost|127\.0\.0\.1/.test(testDb) ? false : { rejectUnauthorized: false } })
+  await db.connect()
+  await db.query('TRUNCATE users, settings, records, activities, link_clicks, integrations, oauth_states, feeds, insight_summaries RESTART IDENTITY CASCADE')
 })
 
-after(() => { api?.kill(); mock?.closeAllConnections?.(); mock?.close(); db?.close(); if (tmp) rmSync(tmp, { recursive: true, force: true }) })
+after(async () => { api?.kill(); mock?.closeAllConnections?.(); mock?.close(); await db?.end() })
 
 class Client {
   cookie = ''
@@ -189,7 +192,7 @@ test('YouTube: connect imports videos and estimated revenue, tokens stay encrypt
   assert.equal(info.connection.accountName, 'My Channel'); assert.equal(info.connection.status, 'connected')
   const text = JSON.stringify((await A.get('/api/integrations')).data)
   assert.ok(!text.includes('at1') && !text.includes('rt1'), 'tokens must never be sent to the client')
-  const row = db.prepare("SELECT access_token, refresh_token FROM integrations WHERE provider='youtube'").get()
+  const row = (await db.query("SELECT access_token, refresh_token FROM integrations WHERE provider='youtube'")).rows[0]
   assert.ok(!row.access_token.includes('at1') && !row.refresh_token.includes('rt1'), 'tokens must be encrypted at rest')
 
   const videos = await contentOf(A, 'YouTube')
@@ -217,7 +220,7 @@ test('YouTube: syncing again never duplicates, and user edits survive', async ()
 })
 
 test('YouTube: an expired access token is refreshed automatically', async () => {
-  db.prepare("UPDATE integrations SET expires_at = 1 WHERE provider = 'youtube'").run()
+  await db.query("UPDATE integrations SET expires_at = 1 WHERE provider = 'youtube'")
   assert.equal((await A.post('/api/integrations/youtube/sync')).status, 200)
   assert.equal(mockState.google.refreshCalls, 1)
   assert.equal(mockState.google.bearers.at(-1), 'at2')
@@ -233,7 +236,7 @@ test('YouTube: channels without revenue access still import videos', async () =>
 
 test('YouTube: a revoked connection asks the user to reconnect', async () => {
   mockState.google.revokeRefresh = true
-  db.prepare("UPDATE integrations SET expires_at = 1 WHERE provider = 'youtube'").run()
+  await db.query("UPDATE integrations SET expires_at = 1 WHERE provider = 'youtube'")
   const r = await A.post('/api/integrations/youtube/sync')
   assert.equal(r.status, 502); assert.match(r.data.error, /reconnect/i)
   assert.equal((await connectInfo(A, 'youtube')).connection.status, 'needs_reconnect')
@@ -244,7 +247,7 @@ test('YouTube: disconnecting revokes access but keeps imported records', async (
   assert.equal(mockState.google.revoked, 1)
   assert.equal((await connectInfo(A, 'youtube')).connection, null)
   assert.equal((await contentOf(A, 'YouTube')).length, 2)
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM integrations WHERE provider='youtube'").get().n, 0)
+  assert.equal((await db.query("SELECT COUNT(*)::int AS n FROM integrations WHERE provider='youtube'")).rows[0].n, 0)
 })
 
 test('Twitch: connect imports videos and follower count', async () => {

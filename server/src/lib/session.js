@@ -11,14 +11,14 @@ export function startSession(res, userId) {
 }
 export const endSession = (res) => res.clearCookie(COOKIE, opts)
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   try {
     const { sub } = jwt.verify(req.cookies[COOKIE] || '', config.jwtSecret, { algorithms: ['HS256'] })
-    const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(sub)
+    const user = await db.get('SELECT id, email FROM users WHERE id = ?', sub)
     if (!user) throw new Error('no user')
     req.user = user
-    next()
   } catch {
-    res.status(401).json({ error: 'Not signed in.' })
+    return res.status(401).json({ error: 'Not signed in.' })
   }
+  next()
 }

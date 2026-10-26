@@ -29,7 +29,7 @@ async function sync({ token, userId }) {
   for (let i = 0; i < ids.length; i += 50) videos.push(...((await data('/videos', { part: 'snippet,statistics,contentDetails', id: ids.slice(i, i + 50).join(',') })).items || []))
 
   // Estimated revenue per month from the Analytics API. Requested in the workspace currency so totals never mix currencies.
-  const wanted = db.prepare('SELECT data FROM settings WHERE user_id = ?').get(userId)
+  const wanted = await db.get('SELECT data FROM settings WHERE user_id = ?', userId)
   const currency = (wanted && JSON.parse(wanted.data).currency) || 'USD'
   const from = new Date(); from.setUTCDate(1); from.setUTCMonth(from.getUTCMonth() - 5)
   const start = day(from) > channel.snippet.publishedAt.slice(0, 10) ? day(from) : channel.snippet.publishedAt.slice(0, 10)
@@ -47,23 +47,23 @@ async function sync({ token, userId }) {
   }
 
   let created = 0, months_ = 0
-  db.transaction(() => {
+  await db.tx(async (t) => {
     for (const v of videos) {
-      const r = upsertSynced(userId, `youtube:video:${v.id}`, 'content', {
+      const r = await upsertSynced(userId, `youtube:video:${v.id}`, 'content', {
         title: v.snippet.title, url: `https://www.youtube.com/watch?v=${v.id}`, platform: 'YouTube',
         format: seconds(v.contentDetails?.duration) <= 60 ? 'Short-form video' : 'Video',
-        published: v.snippet.publishedAt.slice(0, 10), views: Number(v.statistics?.viewCount || 0) })
+        published: v.snippet.publishedAt.slice(0, 10), views: Number(v.statistics?.viewCount || 0) }, t)
       if (r === 'created') created++
     }
     for (const [m, amount] of months) {
       if (amount <= 0) continue
-      upsertSynced(userId, `youtube:rev:${m}`, 'revenue', {
+      await upsertSynced(userId, `youtube:rev:${m}`, 'revenue', {
         title: `YouTube ad revenue ${m} (estimated)`, amount: Math.round(amount * 100) / 100, currency: used, date: `${m}-01`,
         source: 'Platform payout', platform: 'YouTube', attribution: 'Estimated', conversionType: 'Payout',
-        reference: `youtube-analytics-${m}`, notes: 'Imported from YouTube Analytics. This is an estimate, not an actual payout.' })
+        reference: `youtube-analytics-${m}`, notes: 'Imported from YouTube Analytics. This is an estimate, not an actual payout.' }, t)
       months_++
     }
-  })()
+  })
   return `${videos.length} videos (${created} new), ${months_} revenue months. ${revenueNote}`.trim()
 }
 

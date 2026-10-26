@@ -14,14 +14,14 @@ async function sync({ token, userId }) {
   let followers = null
   try { followers = (await api(token, '/channels/followers', { broadcaster_id: me.id })).total } catch { /* scope not granted */ }
   let created = 0
-  db.transaction(() => {
+  await db.tx(async (t) => {
     for (const v of vids) {
-      const r = upsertSynced(userId, `twitch:video:${v.id}`, 'content', {
+      const r = await upsertSynced(userId, `twitch:video:${v.id}`, 'content', {
         title: v.title || 'Untitled stream', url: v.url, platform: 'Twitch', format: 'Video',
-        published: (v.created_at || '').slice(0, 10), views: Number(v.view_count || 0) })
+        published: (v.created_at || '').slice(0, 10), views: Number(v.view_count || 0) }, t)
       if (r === 'created') created++
     }
-  })()
+  })
   return `${vids.length} videos (${created} new)${followers != null ? `, ${followers} followers` : ''}. Twitch does not provide revenue through its API.`
 }
 

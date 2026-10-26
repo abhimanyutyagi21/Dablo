@@ -4,6 +4,7 @@ import { config } from '../config.js'
 import { db } from '../db.js'
 
 const router = Router()
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
 // Link unfurlers, crawlers and CLI tools shouldn't inflate "qualified clicks".
 const BOT = /bot|crawl|spider|slurp|preview|unfurl|facebookexternalhit|whatsapp|telegram|discord|slack|curl|wget|python-requests|httpclient|headless|monitor|lighthouse/i
@@ -24,22 +25,22 @@ function shouldCount(req) {
 }
 
 // Visitors are stored only as a short salted hash that rotates daily — no raw IPs.
-function recordClick(req, link) {
+async function recordClick(req, link) {
   const ua = req.get('user-agent') || ''
   const day = new Date().toISOString().slice(0, 10)
   const visitor = createHash('sha256').update(`${config.jwtSecret}|${day}|${req.ip}|${ua}`).digest('hex').slice(0, 16)
-  const recent = db.prepare('SELECT 1 FROM link_clicks WHERE link_id = ? AND visitor = ? AND clicked_at > ?')
-    .get(link.id, visitor, new Date(Date.now() - DEDUPE_MS).toISOString())
+  const recent = await db.get('SELECT 1 FROM link_clicks WHERE link_id = ? AND visitor = ? AND clicked_at > ?',
+    link.id, visitor, new Date(Date.now() - DEDUPE_MS).toISOString())
   if (recent) return
   let referrer = ''
   try { referrer = new URL(req.get('referer') || '').hostname.slice(0, 100) } catch { /* no referrer */ }
-  db.prepare('INSERT INTO link_clicks (id, link_id, user_id, clicked_at, visitor, referrer) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(randomUUID(), link.id, link.user_id, new Date().toISOString(), visitor, referrer)
+  await db.run('INSERT INTO link_clicks (id, link_id, user_id, clicked_at, visitor, referrer) VALUES (?, ?, ?, ?, ?, ?)',
+    randomUUID(), link.id, link.user_id, new Date().toISOString(), visitor, referrer)
 }
 
-router.get('/:slug', (req, res) => {
+router.get('/:slug', wrap(async (req, res) => {
   res.set('Cache-Control', 'no-store') // 302 + no-store so every click reaches the server
-  const row = db.prepare(`SELECT id, user_id, data FROM records WHERE type = 'links' AND slug = ?`).get(String(req.params.slug).toLowerCase())
+  const row = await db.get(`SELECT id, user_id, data FROM records WHERE type = 'links' AND slug = ?`, String(req.params.slug).toLowerCase())
   if (!row) return page(res, 404, 'Link not found', 'This link does not exist or was removed.')
   const link = JSON.parse(row.data)
   if (link.status !== 'Active') return page(res, 410, 'Link paused', 'The owner has paused this link.')
@@ -54,9 +55,9 @@ router.get('/:slug', (req, res) => {
   for (const [k, v] of [['utm_source', link.source], ['utm_medium', link.medium], ['utm_campaign', slugify(link.campaign)]]) {
     if (v && !target.searchParams.has(k)) target.searchParams.set(k, v)
   }
-  try { if (shouldCount(req)) recordClick(req, { id: row.id, user_id: row.user_id }) }
+  try { if (shouldCount(req)) await recordClick(req, { id: row.id, user_id: row.user_id }) }
   catch (e) { console.error('click logging failed', e) } // never block the visitor
   res.redirect(302, target.href)
-})
+}))
 
 export default router
