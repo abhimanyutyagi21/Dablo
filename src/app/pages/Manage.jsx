@@ -29,7 +29,7 @@ export function Reports() {
 const TABS = [['profile', 'Profile'], ['workspace', 'Workspace'], ['data', 'Data & privacy'], ['account', 'Account']]
 
 export function Settings() {
-  const { data, settings, updateSettings, wipe, signOut } = useStore()
+  const { data, settings, updateSettings, wipe, signOut, rates } = useStore()
   const toast = useToast()
   const [tab, setTab] = useState('profile')
 
@@ -40,6 +40,12 @@ export function Settings() {
     const err = await updateSettings(patch)
     err ? toast(err, true) : toast('Settings saved.')
   }
+  const applyCurrency = async (e) => {
+    const c = e.target.value
+    const err = await updateSettings({ currency: c })
+    err ? toast(err, true) : toast(`All amounts are now shown in ${c}.`)
+  }
+  const ratesNote = rates ? (rates.source === 'live' ? `Live rates, updated ${rates.asOf}.` : 'Live rates are unavailable, so approximate rates are being used.') : 'Loading exchange rates.'
   const backup = () => { download(JSON.stringify(data, null, 2), `dablo-workspace-backup-${today()}.json`, 'application/json'); toast('Workspace backup downloaded.') }
 
   return (<>
@@ -51,7 +57,8 @@ export function Settings() {
           <form className="form-grid" onSubmit={save}>
             <label className="form-label">Display name<input name="name" required defaultValue={settings.name || ''} /></label>
             <label className="form-label">Email<input name="email" type="email" required defaultValue={settings.email || ''} /></label>
-            <label className="form-label">Preferred currency<select name="currency" defaultValue={settings.currency}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label className="form-label">Preferred currency<select name="currency" defaultValue={settings.currency} onChange={applyCurrency}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+            <p className="wide muted" style={{ fontSize: 11 }}>Changing the currency converts every amount in the app using daily exchange rates. {ratesNote} <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></p>
             <div className="wide" style={{ textAlign: 'right' }}><button className="button primary">Save preferences ↗</button></div>
           </form></>}
         {tab === 'workspace' && <><h3>Workspace</h3><p>Choose a name for your workspace.</p>

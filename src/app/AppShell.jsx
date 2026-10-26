@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PAGE_TITLES } from './definitions'
-import { useStore } from './store'
+import { CURRENCIES, PAGE_TITLES } from './definitions'
+import { useStore, useToast } from './store'
 import { UICtx, useGo } from './components/common'
 import RecordModal from './components/RecordModal'
 import SearchModal from './components/SearchModal'
@@ -32,7 +32,8 @@ function PageView({ page }) {
 }
 
 export default function AppShell({ page }) {
-  const { settings, saved } = useStore()
+  const { settings, saved, updateSettings } = useStore()
+  const toast = useToast()
   const go = useGo()
   const [modal, setModal] = useState(null)
   const [searching, setSearching] = useState(false)
@@ -42,6 +43,11 @@ export default function AppShell({ page }) {
   useEffect(() => { setMenu(false); setQuick(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
   const ui = useMemo(() => ({ openForm: (type, record = null) => setModal({ type, record }), openSearch: () => setSearching(true) }), [])
 
+  const switchCurrency = async (e) => {
+    const c = e.target.value
+    const err = await updateSettings({ currency: c })
+    err ? toast(err, true) : toast(`All amounts are now shown in ${c}.`)
+  }
   const name = settings.name || 'Creator'
   const initial = name.slice(0, 1).toUpperCase()
   const Item = ([key, icon, label]) => (
@@ -80,6 +86,7 @@ export default function AppShell({ page }) {
             <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><b>{PAGE_TITLES[page] || 'Overview'}</b></div>
             <div className="top-actions">
               <span className="data-status"><i></i><span>{saved ? 'Changes saved' : 'Workspace ready'}</span></span>
+              <select className="select-control" aria-label="Display currency" title="Display currency" value={settings.currency || 'USD'} onChange={switchCurrency}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select>
               <button className="icon-button search-open" aria-label="Search workspace" onClick={() => setSearching(true)}>⌕</button>
               <button className="button primary compact" onClick={() => ui.openForm('content')}>＋ Create new</button>
               <button className="avatar small-avatar" aria-label="Open settings" onClick={() => go('settings')}>{initial}</button>
@@ -89,7 +96,7 @@ export default function AppShell({ page }) {
             {quick && <QuickStart />}
             <PageView page={page} />
           </section>
-          <footer className="app-footer"><span>© Dablo · Make the money behind your content make sense.</span><span>Creator revenue workspace</span></footer>
+          <footer className="app-footer"><span>© Dablo · Make the money behind your content make sense.</span><span>Creator revenue workspace · <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a></span></footer>
         </main>
       </div>
       <RecordModal modal={modal} onClose={() => setModal(null)} />

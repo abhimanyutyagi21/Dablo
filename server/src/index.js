@@ -13,6 +13,8 @@ import workspaceRoutes from './routes/workspace.js'
 import redirectRoutes from './routes/redirect.js'
 import integrationRoutes from './routes/integrations.js'
 import insightRoutes from './routes/insights.js'
+import importRoutes from './routes/import.js'
+import { getRates } from './lib/rates.js'
 import { startScheduler } from './integrations/scheduler.js'
 
 // The built React app (npm run build) lives in ../../dist; in production this server serves it too.
@@ -31,8 +33,10 @@ app.use(helmet({
   },
 }))
 app.use(cors({ origin: config.clientOrigin, credentials: true }))
-app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
+// CSV imports send up to 1000 rows, so this route gets a larger body limit than the rest of the API.
+app.use('/api/import', requireAuth, express.json({ limit: '2mb' }), importRoutes)
+app.use(express.json({ limit: '100kb' }))
 
 // Public short links: /r/:slug -> log click -> redirect
 app.use('/r', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false }), redirectRoutes)
@@ -40,6 +44,8 @@ app.use('/r', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true
 app.get('/api/health', async (req, res) => {
   try { await db.get('SELECT 1 AS ok'); res.json({ ok: true }) } catch { res.status(503).json({ ok: false }) }
 })
+// Exchange rates are public (no user data); cached on the server and refreshed at most twice a day.
+app.get('/api/rates', async (req, res) => { res.set('Cache-Control', 'public, max-age=3600'); res.json(await getRates()) })
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again in a few minutes.' } }), authRoutes)
 app.use('/api/integrations', requireAuth, integrationRoutes)

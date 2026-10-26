@@ -5,17 +5,17 @@ const CUR = ['USD', 'INR', 'EUR', 'GBP', 'CAD', 'AUD']
 export const TYPES = {
   content: { singular: 'content item', fields: {
     title: 'str!', url: 'url', platform: 'str!', format: 'str', published: 'date', views: 'num', clicks: 'num', conversions: 'num',
-    revenue: 'num', campaign: 'str', product: 'str', tags: 'str', notes: 'str' } },
+    revenue: 'num', currency: 'cur', campaign: 'str', product: 'str', tags: 'str', notes: 'str' } },
   revenue: { singular: 'revenue record', fields: {
     title: 'str!', amount: 'num!', currency: CUR, date: 'date!', source: ['Affiliate', 'Sponsorship', 'Digital product', 'Services', 'Platform payout', 'Other'],
     platform: 'str', product: 'str', campaign: 'str', content: 'str', link: 'str', conversionType: 'str',
     attribution: ['Attributed', 'Manually associated', 'Unattributed', 'Estimated'], reference: 'str', notes: 'str' } },
   links: { singular: 'tracking link', fields: {
     name: 'str!', destination: 'url!', slug: 'str', content: 'str', campaign: 'str', product: 'str', source: 'str', medium: 'str',
-    status: ['Active', 'Paused'], conversions: 'num', revenue: 'num' } },
+    status: ['Active', 'Paused'], conversions: 'num', revenue: 'num', currency: 'cur' } },
   campaigns: { singular: 'campaign', fields: {
     name: 'str!', description: 'str', start: 'date', end: 'date', status: ['Planning', 'Active', 'Completed', 'Archived'],
-    products: 'str', content: 'str', links: 'str', budget: 'num', notes: 'str' } },
+    products: 'str', content: 'str', links: 'str', budget: 'num', currency: 'cur', notes: 'str' } },
   products: { singular: 'product or offer', fields: {
     name: 'str!', type: 'str!', url: 'url', price: 'num', currency: CUR, status: ['Active', 'Draft', 'Archived'], description: 'str', notes: 'str' } },
   frameworks: { singular: 'framework', fields: {
@@ -40,6 +40,12 @@ export function clean(type, input) {
     const kind = required ? spec.slice(0, -1) : spec
     const empty = raw === undefined || raw === null || String(raw).trim() === ''
     if (required && empty) return { error: `${key} is required.` }
+    if (kind === 'cur') { // optional currency code stamped on records whose amounts have no currency field of their own
+      const c = empty ? '' : String(raw).trim().toUpperCase()
+      if (c && !CUR.includes(c)) return { error: `${key} must be one of: ${CUR.join(', ')}.` }
+      out[key] = c
+      continue
+    }
     if (kind === 'num') {
       const n = empty ? 0 : Number(raw)
       if (!Number.isFinite(n) || n < 0 || n > 1e12) return { error: `${key} must be a non-negative number.` }

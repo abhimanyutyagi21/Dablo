@@ -11,10 +11,10 @@ const RULES = [
 ]
 
 export default function Insights() {
-  const { data, money, fmtNum, saveInsight } = useStore()
+  const { data, money, fmtNum, sumMoney, saveInsight } = useStore()
   const go = useGo()
   const toast = useToast()
-  const xs = insightRules(data, money, fmtNum)
+  const xs = insightRules(data, money, fmtNum, sumMoney)
   return (<>
     <Heading title="Insights" desc="Evidence first. These rules explain what the saved records can support."><button className="button ghost" onClick={() => go('content')}>Review content</button></Heading>
     <Notice mark="✳" title="Insights are not causal proof.">These deterministic checks use fields saved in this workspace. They are signals to investigate, not claims that content caused a sale. Small samples can be misleading.</Notice>

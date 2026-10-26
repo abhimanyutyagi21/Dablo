@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 import { definitions } from './definitions'
-import { fmtMoney, fmtNum, uid } from './utils'
+import { convertAmount } from './currency'
+import { fmtMoney, fmtNum, num, uid } from './utils'
 
 // ── Toasts ────────────────────────────────────────────────────────────────
 const ToastCtx = createContext(() => {})
@@ -40,6 +41,16 @@ export function StoreProvider({ children }) {
   const [booting, setBooting] = useState(true)
   const [bootError, setBootError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [rates, setRates] = useState(null)      // { base: 'USD', rates, source: 'live' | 'fallback', asOf }
+
+  // Exchange rates are public; refresh them a few times a day.
+  useEffect(() => {
+    let alive = true
+    const load = () => api.get('/rates').then((r) => { if (alive) setRates(r) }).catch(() => {})
+    load()
+    const timer = setInterval(load, 6 * 60 * 60 * 1000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [])
 
   // Apply a full workspace payload from /workspace, /auth/login, /auth/signup or DELETE /workspace.
   const hydrate = (w) => {
@@ -65,11 +76,17 @@ export function StoreProvider({ children }) {
     }
     document.addEventListener('visibilitychange', resync)
     window.addEventListener('focus', resync)
-    return () => { document.removeEventListener('visibilitychange', resync); window.removeEventListener('focus', resync) }
+    const poll = setInterval(resync, 20000) // keep clicks, imports and other tabs up to date without a refresh
+    return () => { document.removeEventListener('visibilitychange', resync); window.removeEventListener('focus', resync); clearInterval(poll) }
   }, [session?.id]) // eslint-disable-line
 
   const { settings } = data
-  const money = useCallback((v, c) => fmtMoney(v, c || settings.currency || 'USD'), [settings.currency])
+  // Every amount is stored in its own currency and converted to the display currency when shown,
+  // so switching currency changes all amounts in the app and switching back loses nothing.
+  const display = settings.currency || 'USD'
+  const conv = useCallback((v, from) => convertAmount(num(v), from || display, display, rates), [display, rates])
+  const money = useCallback((v, from) => fmtMoney(conv(v, from), display), [conv, display])
+  const sumMoney = useCallback((list, key) => list.reduce((s, r) => s + conv(r[key], r.currency), 0), [conv])
   const patchCollection = (type, fn, activities) =>
     setData((d) => ({ ...d, activities, collections: { ...d.collections, [type]: fn(d.collections[type]) } }))
   const attempt = async (fn) => { try { await fn(); setSaved(true); return null } catch (e) { return e.message } }
@@ -114,6 +131,15 @@ export function StoreProvider({ children }) {
       if (err) toast(err, true)
     },
     reload: () => attempt(async () => hydrate(await api.get('/workspace'))),
+    importRows: async (type, rows) => {
+      try {
+        const res = await api.post(`/import/${type}`, { rows })
+        patchCollection(type, () => res.records, res.activities)
+        setSaved(true)
+        if (res.created) toast(`Imported ${res.created} ${definitions[type].label.toLowerCase()} record${res.created === 1 ? '' : 's'}.`)
+        return { result: res }
+      } catch (e) { return { error: e.message } }
+    },
     signUp: ({ name, email, password }) => attempt(async () => hydrate(await api.post('/auth/signup', { name, email, password }))),
     signIn: (email, password) => attempt(async () => {
       const w = await api.post('/auth/login', { email, password })
@@ -126,6 +152,6 @@ export function StoreProvider({ children }) {
     },
   }
 
-  const value = useMemo(() => ({ data, settings, session, booting, bootError, retry: boot, saved, money, fmtNum, ...actions }), [data, session, booting, bootError, saved, money]) // eslint-disable-line
+  const value = useMemo(() => ({ data, settings, session, booting, bootError, retry: boot, saved, money, conv, sumMoney, rates, fmtNum, ...actions }), [data, session, booting, bootError, saved, money, conv, sumMoney, rates]) // eslint-disable-line
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }

@@ -7,16 +7,16 @@ import Connections from './Connections'
 import { isAttributed, sumBy } from '../utils'
 
 function PlatformCard({ p, onOpen }) {
-  const { data, money, fmtNum } = useStore()
+  const { data, money, fmtNum, sumMoney } = useStore()
   const content = data.collections.content.filter((c) => c.platform === p)
   const records = platformRevenueRecords(data, p)
   return (
     <article className="platform-card">
       <div className="platform-card-top"><span className="platform-mark">{p.slice(0, 1)}</span><span className="tag">{content.length} CONTENT</span></div>
-      <h3>{p}</h3><div className="platform-revenue">{money(sumBy(records, 'amount'))}</div>
+      <h3>{p}</h3><div className="platform-revenue">{money(sumMoney(records, 'amount'))}</div>
       <small className="platform-muted">Recorded revenue linked to {p}</small>
       <div className="platform-mini-grid">
-        <div><small>ATTRIBUTED</small><b>{money(sumBy(records.filter(isAttributed), 'amount'))}</b></div>
+        <div><small>ATTRIBUTED</small><b>{money(sumMoney(records.filter(isAttributed), 'amount'))}</b></div>
         <div><small>VIEWS</small><b>{fmtNum(sumBy(content, 'views'))}</b></div>
         <div><small>CLICKS</small><b>{fmtNum(sumBy(content, 'clicks'))}</b></div>
         <div><small>CONVERSIONS</small><b>{fmtNum(sumBy(content, 'conversions'))}</b></div>
@@ -27,7 +27,7 @@ function PlatformCard({ p, onOpen }) {
 }
 
 function Detail({ p, onOpen }) {
-  const { data, money, fmtNum } = useStore()
+  const { data, money, fmtNum, sumMoney } = useStore()
   const { openForm } = useUI()
   const content = data.collections.content.filter((c) => c.platform === p)
   const records = platformRevenueRecords(data, p)
@@ -37,10 +37,10 @@ function Detail({ p, onOpen }) {
       <CreateButton type="content" label="Add content" /><CreateButton type="revenue" label="Record revenue" />
     </Heading>
     <div className="metric-grid">
-      <Metric featured label="Recorded revenue" value={money(sumBy(records, 'amount'))} foot={`${records.length} associated records`} />
+      <Metric featured label="Recorded revenue" value={money(sumMoney(records, 'amount'))} foot={`${records.length} associated records`} />
       <Metric label="Content items" value={fmtNum(content.length)} foot="Saved content on this platform" />
       <Metric label="Views" value={fmtNum(sumBy(content, 'views'))} foot="Manually recorded metrics" />
-      <Metric label="Content-level revenue" value={money(sumBy(content, 'revenue'))} foot="Shown separately; not added to recorded revenue" />
+      <Metric label="Content-level revenue" value={money(sumMoney(content, 'revenue'))} foot="Shown separately; not added to recorded revenue" />
     </div>
     <Notice mark="i" title="Keep transaction totals distinct.">Platform revenue sums revenue records assigned to this platform (or linked through a content title). Content-level revenue is displayed separately and is not added again.</Notice>
     <div className="section-title"><div><h2>{p} content</h2><p>Performance fields are manually entered until data providers are connected.</p></div><CreateButton type="content" label="Add content" /></div>
@@ -49,7 +49,7 @@ function Detail({ p, onOpen }) {
         <thead><tr><th>CONTENT</th><th>PUBLISHED</th><th>VIEWS</th><th>CLICKS</th><th>CONVERSIONS</th><th>CONTENT REVENUE</th><th>ACTIONS</th></tr></thead>
         <tbody>{content.map((c) => (
           <tr key={c.id}><td className="td-title">{c.title}</td><td>{c.published || '—'}</td><td>{fmtNum(c.views)}</td><td>{fmtNum(c.clicks)}</td><td>{fmtNum(c.conversions)}</td>
-            <td className="money">{money(c.revenue)}</td><td><button className="tiny-action" onClick={() => openForm('content', c)}>Edit</button></td></tr>))}</tbody>
+            <td className="money">{money(c.revenue, c.currency)}</td><td><button className="tiny-action" onClick={() => openForm('content', c)}>Edit</button></td></tr>))}</tbody>
       </table></div></section>
     ) : <Empty title="No content yet" desc={`Add a content record and choose ${p} as its platform.`}><CreateButton type="content" label="Add content" /></Empty>}
     <div className="section-title"><div><h2>Revenue records</h2><p>Transactions assigned to {p}.</p></div><CreateButton type="revenue" label="Record revenue" /></div>

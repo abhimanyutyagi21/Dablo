@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { COLUMNS, definitions, DESCRIPTIONS, FILTERS } from '../definitions'
 import { CreateButton, Empty, Heading, Metric, Notice, useUI } from '../components/common'
+import ImportModal from '../components/ImportModal'
+import { revenueModel } from '../selectors'
 import { useStore, useToast } from '../store'
-import { download, isAttributed, sumBy, toCSV, today } from '../utils'
+import { download, fmtMoney, toCSV, today } from '../utils'
 
 export function useExportCSV() {
   const { data } = useStore()
@@ -18,9 +20,12 @@ export function useExportCSV() {
 const SOURCES = { youtube: 'YouTube', twitch: 'Twitch', rss: 'RSS feed' }
 
 function Cell({ type, k, r }) {
-  const { money, fmtNum } = useStore()
+  const { money, fmtNum, settings } = useStore()
   const v = r[k]
-  if (['amount', 'revenue', 'budget', 'price'].includes(k)) return <span className="money">{money(v, r.currency)}</span>
+  if (['amount', 'revenue', 'budget', 'price'].includes(k)) {
+    const native = r.currency && r.currency !== settings.currency ? `Entered as ${fmtMoney(v, r.currency)}` : undefined
+    return <span className="money" title={native}>{money(v, r.currency)}</span>
+  }
   if (['views', 'clicks', 'conversions'].includes(k)) return fmtNum(v)
   if (k === 'title' || k === 'name') return <span className="td-title">{v || 'Untitled'}<small className="td-sub">{r.synced ? `Synced from ${SOURCES[r.synced] || r.synced}` : r.url || r.description || r.notes || ''}</small></span>
   if (k === 'status' || k === 'attribution') return <span className={'status-pill' + (['Paused', 'Unattributed', 'Draft', 'Planning'].includes(v) ? ' warn' : '')}>{v || 'Not set'}</span>
@@ -39,16 +44,19 @@ async function copyLink(l, toast) {
 
 // Generic table page for content, revenue, tracking links and campaigns.
 export default function CollectionPage({ type }) {
-  const { data, money, fmtNum, deleteRecord } = useStore()
+  const { data, money, fmtNum, conv, deleteRecord } = useStore()
   const { openForm } = useUI()
   const toast = useToast()
   const exportCSV = useExportCSV()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState('')
+  const [importing, setImporting] = useState(false)
   const def = definitions[type], records = data.collections[type], cols = COLUMNS[type]
   const shown = records.filter((r) => (!q || Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) && (!filter || (r.status || r.platform || r.attribution || '') === filter))
   const rev = data.collections.revenue
   const isRev = type === 'revenue'
+  const model = revenueModel(data.collections, conv)
+  const canImport = ['content', 'revenue', 'campaigns'].includes(type)
 
   return (<>
     <Heading title={def.label} desc={isRev ? 'Record money once. Associate it with content only when the evidence supports it.' : DESCRIPTIONS[type]}>
@@ -56,12 +64,12 @@ export default function CollectionPage({ type }) {
     </Heading>
     {isRev && <>
       <div className="metric-grid">
-        <Metric featured label="Recorded total" value={money(sumBy(rev, 'amount'))} foot={`${rev.length} saved records`} />
-        <Metric label="Attributed" value={money(sumBy(rev.filter(isAttributed), 'amount'))} foot="Attributed + manually associated" />
-        <Metric label="Unattributed" value={money(sumBy(rev.filter((r) => r.attribution === 'Unattributed'), 'amount'))} foot="Needs evidence or review" />
+        <Metric featured label="Recorded total" value={money(model.total)} foot={model.contentTotal > 0 ? `${rev.length} records + ${money(model.contentTotal)} from content` : `${rev.length} saved records`} />
+        <Metric label="Attributed" value={money(model.attributed)} foot="Attributed + manually associated" />
+        <Metric label="Unattributed" value={money(model.unattributed)} foot="Needs evidence or review" />
         <Metric label="Revenue records" value={fmtNum(rev.length)} foot="Not deduplicated by transaction reference" />
       </div>
-      <Notice mark="i" title="How totals work">The recorded total sums each saved revenue record exactly once. Content and campaign associations do not add a second transaction. Use a consistent currency when comparing totals.</Notice>
+      <Notice mark="i" title="How totals work">The recorded total sums each saved revenue record exactly once. Content and campaign associations do not add a second transaction. Amounts in other currencies are converted to your display currency using daily exchange rates. Revenue typed on a content item is included only when no revenue record is linked to that content, so nothing is counted twice.</Notice>
     </>}
     <section className="panel table-panel">
       <div className="table-toolbar">
@@ -72,6 +80,7 @@ export default function CollectionPage({ type }) {
             <option value="">All records</option>{FILTERS[type].map((o) => <option key={o}>{o}</option>)}
           </select>
           <button className="button ghost" onClick={() => exportCSV(type)}>↓ CSV</button>
+          {canImport && <button className="button ghost" onClick={() => setImporting(true)}>↑ Import CSV</button>}
         </div>
       </div>
       <div className="table-scroll"><table>
@@ -99,5 +108,6 @@ export default function CollectionPage({ type }) {
         <span style={{ fontSize: 10, color: 'var(--muted)' }}>Saved records</span>
       </div>
     </section>
+    {canImport && <ImportModal type={type} open={importing} onClose={() => setImporting(false)} />}
   </>)
 }
